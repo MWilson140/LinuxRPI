@@ -16,24 +16,24 @@
 
 ssize_t readLine(int fd, char *buf, size_t maxlen)
 {
-	ssize_t n, rc;
-	char c;
-	for (n = 0; n < maxlen -1; n++)
-	{
-		rc = read(fd, &c, 1);
-		if (rc == 1)
-		{
-			buf[n] = c;
-			if (c == '\n')
-				break;
-		}
-		else if (rc == 0)
-		{
-			break;
-		}
-		buf[n+1] = '\0';
-		return n;
-	}
+    ssize_t n, rc;
+    char c;
+    for (n = 0; n < maxlen - 1; n++) {
+        rc = read(fd, &c, 1);
+        if (rc == 1) {
+            buf[n] = c;
+            if (c == '\n')
+                break;
+        } else if (rc == 0) {
+            break; // EOF
+        } else {
+            if (errno == EINTR)
+                continue;
+            return -1; // Error
+        }
+    }
+    buf[n] = '\0'; // <-- Corrected from buf[n+1]
+    return n;
 }
 
 
@@ -102,19 +102,20 @@ void serve_a_client(int sd) {
 
         // Prompt for username
         write(sd, "Enter a Username:\n", 18);
-		int len = readline(sd, msg, MAX_BLOCK_SIZE);
+		int len = readLine(sd, msg, MAX_BLOCK_SIZE);
         if (len <= 0) break;
-        user_input[strcspn(user_input, "\r\n")] = 0; // strip CRLF
+		strncpy(user_input, msg, MAX_BLOCK_SIZE);
+		user_input[strcspn(user_input, "\r\n")] = 0;
+
 
         if (strcmp(user_input, "exit") == 0) break;
 
         // Prompt for password
         write(sd, "Enter a password:\n", 19);
-        int len = readline(sd, msg, MAX_BLOCK_SIZE);
-        if (len <= 0) break;
-        pass_input[strcspn(pass_input, "\r\n")] = 0;
-
-        if (strcmp(pass_input, "exit") == 0) break;
+		int len = readLine(sd, msg, MAX_BLOCK_SIZE);
+		if (len <= 0) break;
+		strncpy(pass_input, msg, MAX_BLOCK_SIZE);
+		pass_input[strcspn(pass_input, "\r\n")] = 0;
 
         // Check credentials
         loggedin = 0;
@@ -136,7 +137,7 @@ void serve_a_client(int sd) {
         while (loggedin) {
             write(sd, "Enter a command (or 'exit'):\n", 30);
             memset(msg, 0, sizeof(msg));
-			int len = readline(sd, msg, MAX_BLOCK_SIZE);
+			int len = readLine(sd, msg, MAX_BLOCK_SIZE);
             if (len <= 0) break;
             msg[strcspn(msg, "\r\n")] = 0;
 
