@@ -14,6 +14,29 @@
 
 #define   SERV_TCP_PORT   40147   /* default server listening port */
 
+ssize_t readLine(int fd, char *buf, size_t maxlen)
+{
+	ssize_t n, rc;
+	char c;
+	for (n = 0; n < maxlen -1; n++)
+	{
+		rc = read(fd, &c, 1);
+		if (rc == 1)
+		{
+			buf[n] = c;
+			if (c == '\n')
+				break;
+		}
+		else if (rc == 0)
+		{
+			break;
+		}
+		buf[n+1] = '\0';
+		return n;
+	}
+}
+
+
 void claim_children() {
     pid_t pid = 1;
     
@@ -79,7 +102,7 @@ void serve_a_client(int sd) {
 
         // Prompt for username
         write(sd, "Enter a Username:\n", 18);
-        int len = read(sd, user_input, MAX_BLOCK_SIZE - 1);
+		int len = readline(sd, msg, MAX_BLOCK_SIZE);
         if (len <= 0) break;
         user_input[strcspn(user_input, "\r\n")] = 0; // strip CRLF
 
@@ -87,7 +110,7 @@ void serve_a_client(int sd) {
 
         // Prompt for password
         write(sd, "Enter a password:\n", 19);
-        len = read(sd, pass_input, MAX_BLOCK_SIZE - 1);
+        int len = readline(sd, msg, MAX_BLOCK_SIZE);
         if (len <= 0) break;
         pass_input[strcspn(pass_input, "\r\n")] = 0;
 
@@ -113,7 +136,7 @@ void serve_a_client(int sd) {
         while (loggedin) {
             write(sd, "Enter a command (or 'exit'):\n", 30);
             memset(msg, 0, sizeof(msg));
-            len = read(sd, msg, MAX_BLOCK_SIZE - 1);
+			int len = readline(sd, msg, MAX_BLOCK_SIZE);
             if (len <= 0) break;
             msg[strcspn(msg, "\r\n")] = 0;
 
