@@ -61,7 +61,6 @@ typedef struct {
 } User;
 
 void serve_a_client(int sd) {
-    // Initialize users array
     User users[] = {
         {"test", "test"},
         {"user1", "password1"},
@@ -71,41 +70,28 @@ void serve_a_client(int sd) {
         {"user5", "password5"}
     };
     int num_users = sizeof(users) / sizeof(users[0]);
-
     int loggedin = 0;
-    char user_input[MAX_BLOCK_SIZE];
-    char pass_input[MAX_BLOCK_SIZE];
-    char msg[10000];
+    char user_input[MAX_BLOCK_SIZE], pass_input[MAX_BLOCK_SIZE], msg[MAX_BLOCK_SIZE];
 
-    while(1) {	
-        memset(user_input, '\0', sizeof(user_input));
-        memset(pass_input, '\0', sizeof(pass_input));
-        memset(msg, '\0', sizeof(msg));
-		
-		char msg[1000];
+    while (1) {
+        memset(user_input, 0, sizeof(user_input));
+        memset(pass_input, 0, sizeof(pass_input));
+
         // Prompt for username
-        strcpy(msg, "Enter a Username: ");
-        sendLarge(sd, msg);
-        memset(msg,'\0', sizeof(msg));
-        readLarge(sd, msg);
-        if (strcmp(msg, "exit") == 0) {
-            printf("server exiting\n");
-            exit(0);
-        }
-        strcpy(user_input, msg);
-        memset(msg, '\0', sizeof(msg));
+        write(sd, "Enter a Username:\n", 18);
+        int len = read(sd, user_input, MAX_BLOCK_SIZE - 1);
+        if (len <= 0) break;
+        user_input[strcspn(user_input, "\r\n")] = 0; // strip CRLF
+
+        if (strcmp(user_input, "exit") == 0) break;
 
         // Prompt for password
-        strcpy(msg, "Enter a password: ");
-        sendLarge(sd, msg);
-        memset(msg, '\0', sizeof(msg));
-        readLarge(sd, msg);
-        if (strcmp(msg, "exit") == 0) {
-            printf("server exiting\n");
-            exit(0);
-        }
-        strcpy(pass_input, msg);
-        memset(msg, '\0', sizeof(msg));
+        write(sd, "Enter a password:\n", 19);
+        len = read(sd, pass_input, MAX_BLOCK_SIZE - 1);
+        if (len <= 0) break;
+        pass_input[strcspn(pass_input, "\r\n")] = 0;
+
+        if (strcmp(pass_input, "exit") == 0) break;
 
         // Check credentials
         loggedin = 0;
@@ -117,66 +103,59 @@ void serve_a_client(int sd) {
         }
 
         if (loggedin) {
-            strcpy(msg, "loggedin");
+            write(sd, "Logged in successfully.\n", 25);
         } else {
-            strcpy(msg, "Invalid details");
+            write(sd, "Invalid credentials.\n", 22);
+            continue;
         }
-        sendLarge(sd, msg);
-        memset(msg, '\0', sizeof(msg));
 
+        // Command loop
         while (loggedin) {
-            memset(msg, '\0', sizeof(msg));
-            strcpy(msg, "Enter a command:");
-            sendLarge(sd, msg);
-            memset(msg, '\0', sizeof(msg));
-            readLarge(sd, msg);
+            write(sd, "Enter a command (or 'exit'):\n", 30);
+            memset(msg, 0, sizeof(msg));
+            len = read(sd, msg, MAX_BLOCK_SIZE - 1);
+            if (len <= 0) break;
+            msg[strcspn(msg, "\r\n")] = 0;
+
             if (strcmp(msg, "exit") == 0) {
-                printf("server exiting\n");
-                exit(0);
+                write(sd, "Logging out.\n", 13);
+                loggedin = 0;
+                break;
             }
 
-            // Set up pipe for command output
+            // Run the command using pipe
             int p[2];
-            if (pipe(p) == -1) {
-                perror("Pipe failed");
+            if (pipe(p) < 0) {
+                perror("pipe");
+                write(sd, "Error creating pipe.\n", 22);
                 continue;
             }
 
             pid_t pid = fork();
             if (pid == 0) {
-                // Child process: Execute command
                 dup2(p[1], STDOUT_FILENO);
-                close(p[0]);
-                close(p[1]);
-                execlp(msg, msg, (char *) NULL);
+                dup2(p[1], STDERR_FILENO);
+                close(p[0]); close(p[1]);
+                execlp(msg, msg, (char *)NULL);
                 perror("execlp failed");
                 exit(1);
-            } else if (pid > 0) {
-                // Parent process: Read output from pipe
-                int status;
+            } else {
                 close(p[1]);
-                waitpid(pid, &status, 0);
-                if (WEXITSTATUS(status) == 1) {
-                    printf("server error\n");
-                    strcpy(msg, "error running command");
-                    sendLarge(sd, msg);
-                    memset(msg, '\0', sizeof(msg));
-                    close(p[0]);
-                    continue;
-                } else {
-                    ssize_t bytesRead;
-                    while ((bytesRead = read(p[0], msg, sizeof(msg) - 1)) > 0) {
-                        msg[bytesRead] = '\0';
-                        sendLarge(sd, msg);
-                        memset(msg, '\0', sizeof(msg));
-                    }
+                waitpid(pid, NULL, 0);
+
+                char buffer[1024];
+                ssize_t bytes;
+                while ((bytes = read(p[0], buffer, sizeof(buffer)-1)) > 0) {
+                    buffer[bytes] = '\0';
+                    write(sd, buffer, bytes);
                 }
                 close(p[0]);
             }
         }
     }
-}
 
+    close(sd);
+}
 	
 
 int main(int argc, char *argv[]) {
